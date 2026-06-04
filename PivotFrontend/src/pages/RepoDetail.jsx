@@ -53,6 +53,203 @@ const Icon = {
     </svg>
   ),
 };
+function MergeButton({ branches, currentBranch, repoId, userId, onMergeSuccess }) {
+  const [open, setOpen] = useState(false);
+  const [sourceBranch, setSourceBranch] = useState("");
+  const [merging, setMerging] = useState(false);
+  const [status, setStatus] = useState(null); // { type: 'success'|'error', msg }
+
+  const otherBranches = branches.filter(b => b !== currentBranch);
+
+  const handleMerge = async () => {
+    if (!sourceBranch) return;
+    setMerging(true);
+    setStatus(null);
+    try {
+      const params = new URLSearchParams({
+        userId,
+        repoId,
+        branchNameA: sourceBranch,
+        branchNameB: currentBranch,
+      });
+      const res = await fetch(`${API_BASE}/repo/merge?${params}`, { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      setStatus({ type: "success", msg: `Merged '${sourceBranch}' into '${currentBranch}'` });
+      onMergeSuccess();
+      setTimeout(() => { setOpen(false); setStatus(null); }, 2000);
+    } catch (e) {
+      setStatus({ type: "error", msg: e.message });
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => { setOpen(v => !v); setStatus(null); setSourceBranch(""); }}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: "#238636", border: "1px solid #2ea043",
+          color: "#fff", borderRadius: 6, padding: "5px 12px",
+          fontSize: 13, cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
+        }}
+      >
+        ⑂ Merge
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "110%", left: 0, zIndex: 50,
+          background: "#161b22", border: "1px solid #30363d",
+          borderRadius: 6, minWidth: 280, boxShadow: "0 8px 24px #010409",
+          padding: 16,
+        }}>
+          <div style={{ fontSize: 13, color: "#c9d1d9", marginBottom: 12, fontWeight: 600 }}>
+            Merge into <span style={{ color: "#58a6ff" }}>{currentBranch}</span>
+          </div>
+
+          <div style={{ fontSize: 12, color: "#8b949e", marginBottom: 6 }}>Source branch</div>
+          <select
+            value={sourceBranch}
+            onChange={e => setSourceBranch(e.target.value)}
+            style={{
+              width: "100%", background: "#0d1117", border: "1px solid #30363d",
+              color: "#c9d1d9", borderRadius: 6, padding: "6px 10px",
+              fontSize: 13, marginBottom: 12, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            <option value="">Select branch…</option>
+            {otherBranches.map(b => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+
+          {status && (
+            <div style={{
+              fontSize: 12, padding: "6px 10px", borderRadius: 6, marginBottom: 10,
+              background: status.type === "success" ? "#1a4731" : "#3d1a1a",
+              color: status.type === "success" ? "#3fb950" : "#f85149",
+              border: `1px solid ${status.type === "success" ? "#2ea043" : "#f85149"}`,
+            }}>
+              {status.msg}
+            </div>
+          )}
+
+          <button
+            onClick={handleMerge}
+            disabled={!sourceBranch || merging}
+            style={{
+              width: "100%", background: sourceBranch && !merging ? "#238636" : "#21262d",
+              border: "1px solid #30363d", color: sourceBranch && !merging ? "#fff" : "#8b949e",
+              borderRadius: 6, padding: "6px 0", fontSize: 13,
+              cursor: sourceBranch && !merging ? "pointer" : "not-allowed",
+              fontFamily: "inherit", fontWeight: 600,
+            }}
+          >
+            {merging ? "Merging…" : "Merge"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+function CreateBranchButton({ repoId, userId, currentBranch, onBranchCreated }) {
+  const [open, setOpen] = useState(false);
+  const [branchName, setBranchName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [status, setStatus] = useState(null);
+
+  const handleCreate = async () => {
+    if (!branchName.trim()) return;
+    setCreating(true);
+    setStatus(null);
+    try {
+        const params = new URLSearchParams({
+        repoId,
+        branchName: branchName.trim(),
+        });
+        const res = await fetch(`${API_BASE}/repo/create-branch?${params}`, { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      setStatus({ type: "success", msg: `Branch '${branchName.trim()}' created` });
+      onBranchCreated();
+      setTimeout(() => { setOpen(false); setStatus(null); setBranchName(""); }, 2000);
+    } catch (e) {
+      setStatus({ type: "error", msg: e.message });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => { setOpen(v => !v); setStatus(null); setBranchName(""); }}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: "#21262d", border: "1px solid #30363d",
+          color: "#c9d1d9", borderRadius: 6, padding: "5px 12px",
+          fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+        }}
+      >
+        <Icon.Branch /> New Branch
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "110%", left: 0, zIndex: 50,
+          background: "#161b22", border: "1px solid #30363d",
+          borderRadius: 6, minWidth: 260, boxShadow: "0 8px 24px #010409",
+          padding: 16,
+        }}>
+          <div style={{ fontSize: 13, color: "#c9d1d9", marginBottom: 12, fontWeight: 600 }}>
+            New branch from <span style={{ color: "#58a6ff" }}>{currentBranch}</span>
+          </div>
+
+          <div style={{ fontSize: 12, color: "#8b949e", marginBottom: 6 }}>Branch name</div>
+          <input
+            autoFocus
+            value={branchName}
+            onChange={e => setBranchName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleCreate()}
+            placeholder="feature/my-branch"
+            style={{
+              width: "100%", background: "#0d1117", border: "1px solid #30363d",
+              color: "#c9d1d9", borderRadius: 6, padding: "6px 10px",
+              fontSize: 13, marginBottom: 12, fontFamily: "inherit",
+              boxSizing: "border-box", outline: "none",
+            }}
+          />
+
+          {status && (
+            <div style={{
+              fontSize: 12, padding: "6px 10px", borderRadius: 6, marginBottom: 10,
+              background: status.type === "success" ? "#1a4731" : "#3d1a1a",
+              color: status.type === "success" ? "#3fb950" : "#f85149",
+              border: `1px solid ${status.type === "success" ? "#2ea043" : "#f85149"}`,
+            }}>
+              {status.msg}
+            </div>
+          )}
+
+          <button
+            onClick={handleCreate}
+            disabled={!branchName.trim() || creating}
+            style={{
+              width: "100%", background: branchName.trim() && !creating ? "#238636" : "#21262d",
+              border: "1px solid #30363d", color: branchName.trim() && !creating ? "#fff" : "#8b949e",
+              borderRadius: 6, padding: "6px 0", fontSize: 13,
+              cursor: branchName.trim() && !creating ? "pointer" : "not-allowed",
+              fontFamily: "inherit", fontWeight: 600,
+            }}
+          >
+            {creating ? "Creating…" : "Create Branch"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── BranchSelector ────────────────────────────────────────────────────────────
 
@@ -401,6 +598,19 @@ export default function RepoDetail() {
             current={branch || data?.currentBranch}
             onSelect={(b) => { setBranch(b); fetchDetail(b); }}
           />
+          <CreateBranchButton
+            repoId={repoId}
+            userId={userId}
+            currentBranch={branch || data?.currentBranch}
+            onBranchCreated={() => fetchDetail(branch)}
+        />
+          <MergeButton
+            branches={data?.branches || []}
+            currentBranch={branch || data?.currentBranch}
+            repoId={repoId}
+            userId={userId}
+            onMergeSuccess={() => fetchDetail(branch)}
+        />
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 12, color: "#8b949e" }}>{data?.commits?.length || 0} commits</span>
           <span style={{ fontSize: 12, color: "#8b949e" }}>·</span>
