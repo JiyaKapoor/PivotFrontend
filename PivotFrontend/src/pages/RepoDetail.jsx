@@ -58,9 +58,42 @@ function MergeButton({ branches, currentBranch, repoId, userId, onMergeSuccess }
   const [sourceBranch, setSourceBranch] = useState("");
   const [merging, setMerging] = useState(false);
   const [status, setStatus] = useState(null); // { type: 'success'|'error', msg }
-
+const [safetyLoading, setSafetyLoading] = useState(false);
+const [safetyReport, setSafetyReport] = useState(null);
+const [analysisDone, setAnalysisDone] = useState(false);
   const otherBranches = branches.filter(b => b !== currentBranch);
+const handleSafetyCheck = async () => {
+  if (!sourceBranch) return;
 
+  setSafetyLoading(true);
+  setSafetyReport(null);
+
+  try {
+    const params = new URLSearchParams({
+      repoId,
+      sourceBranch,
+      targetBranch: currentBranch,
+    });
+
+    const res = await fetch(
+      `${API_BASE}/repo/merge-analysis?${params}`
+    );
+
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+
+    const report = await res.text();
+
+    setSafetyReport(report);
+    setAnalysisDone(true);
+
+  } catch (e) {
+    setSafetyReport("Failed to run safety analysis: " + e.message);
+  } finally {
+    setSafetyLoading(false);
+  }
+};
   const handleMerge = async () => {
     if (!sourceBranch) return;
     setMerging(true);
@@ -112,7 +145,11 @@ function MergeButton({ branches, currentBranch, repoId, userId, onMergeSuccess }
           <div style={{ fontSize: 12, color: "#8b949e", marginBottom: 6 }}>Source branch</div>
           <select
             value={sourceBranch}
-            onChange={e => setSourceBranch(e.target.value)}
+            onChange={e => {
+              setSourceBranch(e.target.value);
+              setSafetyReport(null);
+              setAnalysisDone(false);
+            }}
             style={{
               width: "100%", background: "#0d1117", border: "1px solid #30363d",
               color: "#c9d1d9", borderRadius: 6, padding: "6px 10px",
@@ -127,18 +164,52 @@ function MergeButton({ branches, currentBranch, repoId, userId, onMergeSuccess }
 
           {status && (
             <div style={{
-              fontSize: 12, padding: "6px 10px", borderRadius: 6, marginBottom: 10,
-              background: status.type === "success" ? "#1a4731" : "#3d1a1a",
-              color: status.type === "success" ? "#3fb950" : "#f85149",
-              border: `1px solid ${status.type === "success" ? "#2ea043" : "#f85149"}`,
-            }}>
-              {status.msg}
+                        fontSize: 12, padding: "6px 10px", borderRadius: 6, marginBottom: 10,
+                        background: status.type === "success" ? "#1a4731" : "#3d1a1a",
+                        color: status.type === "success" ? "#3fb950" : "#f85149",
+                        border: `1px solid ${status.type === "success" ? "#2ea043" : "#f85149"}`,
+                      }}>
+                        {status.msg}
+                      </div>
+                    )}
+            <button
+            onClick={handleSafetyCheck}
+            disabled={!sourceBranch || safetyLoading}
+            style={{
+              width: "100%",
+              background: "#1f6feb",
+              border: "1px solid #388bfd",
+              color: "#fff",
+              borderRadius: 6,
+              padding: "6px 0",
+              fontSize: 13,
+              marginBottom: 12,
+              cursor: sourceBranch ? "pointer" : "not-allowed",
+            }}
+          >
+            {safetyLoading ? "Analyzing..." : "Analyze Merge"}
+          </button>
+          {safetyReport && (
+            <div
+              style={{
+                marginBottom: 12,
+                background: "#0d1117",
+                border: "1px solid #30363d",
+                borderRadius: 6,
+                padding: 12,
+                maxHeight: 250,
+                overflowY: "auto",
+                whiteSpace: "pre-wrap",
+                color: "#c9d1d9",
+                fontSize: 12,
+              }}
+            >
+              {safetyReport}
             </div>
           )}
-
           <button
             onClick={handleMerge}
-            disabled={!sourceBranch || merging}
+            disabled={!sourceBranch || merging || !analysisDone}
             style={{
               width: "100%", background: sourceBranch && !merging ? "#238636" : "#21262d",
               border: "1px solid #30363d", color: sourceBranch && !merging ? "#fff" : "#8b949e",
@@ -366,7 +437,66 @@ function FileTree({ files, onFileOpen }) {
     </div>
   );
 }
+function AnalysisPanel({ analysis, loading, onClose }) {
+  const [activeTab, setActiveTab] = useState("review");
 
+  if (!loading && !analysis) return null;
+
+  const tabs = [
+    { id: "review", label: "Code Review" },    
+  ];
+
+  const content = {
+    review: analysis?.codeReview,    
+  };
+
+  return (
+    <div style={{ marginTop: 20, border: "1px solid #30363d", borderRadius: 6, overflow: "hidden" }}>
+      <div style={{
+        background: "#161b22", padding: "8px 14px", borderBottom: "1px solid #30363d",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 13, color: "#c9d1d9", fontWeight: 600 }}>⚡ AI Analysis</span>
+          <div style={{ display: "flex", gap: 4 }}>
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  background: activeTab === tab.id ? "#238636" : "#21262d",
+                  border: "1px solid #30363d",
+                  color: activeTab === tab.id ? "#fff" : "#8b949e",
+                  borderRadius: 6, padding: "3px 10px", fontSize: 12,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button onClick={onClose} style={{
+          background: "none", border: "none", color: "#8b949e",
+          cursor: "pointer", fontSize: 16,
+        }}>✕</button>
+      </div>
+      <div style={{ background: "#0d1117", padding: 16, maxHeight: 400, overflowY: "auto" }}>
+        {loading ? (
+          <div style={{ color: "#8b949e", fontSize: 13 }}>Running AI analysis…</div>
+        ) : (
+          <pre style={{
+            margin: 0, fontSize: 13, lineHeight: 1.6,
+            color: "#c9d1d9", fontFamily: "'JetBrains Mono', monospace",
+            whiteSpace: "pre-wrap", wordBreak: "break-word",
+          }}>
+            {content[activeTab] || "No data available."}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
 function CommitHistory({ commits, selectedCommit, onCommitClick }) {
   return (
     <div style={{ border: "1px solid #30363d", borderRadius: 6, overflow: "hidden" }}>
@@ -455,10 +585,16 @@ function FileViewer({ file, loading, onClose }) {
 // ── RepoDetail (main) ─────────────────────────────────────────────────────────
 
 export default function RepoDetail() {
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadPath, setUploadPath] = useState("");
+  const [uploadMessage, setUploadMessage] = useState("");
   const { repoId } = useParams();
   const userId = localStorage.getItem("userId");
   const navigate = useNavigate();
-
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);  
   const [data, setData] = useState(null);
   const [branch, setBranch] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -485,18 +621,74 @@ export default function RepoDetail() {
       setLoading(false);
     }
   };
+  const handleFileUpload = async () => {
+  if (!uploadFile || !uploadPath.trim()) return;
+
+  setUploading(true);
+
+  try {
+    const formData = new FormData();
+    formData.append("repoId", repoId);
+    formData.append("userId", userId);
+    formData.append("message", uploadMessage || "Add file");
+    formData.append("filePath", uploadPath);
+    formData.append("file", uploadFile);
+
+    const res = await fetch(`${API_BASE}/repo/commit`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const text = await res.text();   // 🔴 ALWAYS read response once
+
+    console.log("commit response:", res.status, text);
+
+    if (!res.ok) {
+      throw new Error(text);
+    }
+
+    alert("File committed successfully!");
+    fetchDetail(branch);
+
+    setUploadOpen(false);
+    setUploadFile(null);
+    setUploadPath("");
+    setUploadMessage("");
+
+  } catch (e) {
+    console.error(e);   // 🔴 IMPORTANT
+    alert("Upload failed: " + e.message);
+  } finally {
+    setUploading(false);
+  }
+};
   const handleCommitClick = async (sha) => {
   setSelectedCommit(sha);
   setOpenFile(null);
+  setAnalysis(null);
+
+  // fetch files at commit
   try {
-    const res = await fetch(
-      `${API_BASE}/repo/${repoId}/commits/${sha}/files`
-    );
+    const res = await fetch(`${API_BASE}/repo/${repoId}/commits/${sha}/files`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const files = await res.json();
     setCommitFiles(files);
   } catch (e) {
     console.error("Failed to load files at commit", e);
+  }
+
+  // fetch agent analysis
+  setAnalysisLoading(true);
+  try {
+    const res = await fetch(`${API_BASE}/repo/analysis?commitSha=${sha}`);
+    if (res.ok) {
+      const data = await res.json();
+      setAnalysis(data);
+    }
+  } catch (e) {
+    console.error("Failed to load analysis", e);
+  } finally {
+    setAnalysisLoading(false);
   }
 };
 
@@ -596,7 +788,14 @@ export default function RepoDetail() {
           <BranchSelector
             branches={data?.branches || []}
             current={branch || data?.currentBranch}
-            onSelect={(b) => { setBranch(b); fetchDetail(b); }}
+            onSelect={async (b) => {
+            await fetch(`${API_BASE}/repo/checkout-branch?repoId=${repoId}&userId=${userId}&branchName=${b}`, {
+  method: "POST"
+});
+
+          setBranch(b);
+          fetchDetail(b);
+    }}
           />
           <CreateBranchButton
             repoId={repoId}
@@ -611,6 +810,21 @@ export default function RepoDetail() {
             userId={userId}
             onMergeSuccess={() => fetchDetail(branch)}
         />
+        <button
+        onClick={() => setUploadOpen(true)}
+        style={{
+          background: "#238636",
+          border: "1px solid #2ea043",
+          color: "#fff",
+          borderRadius: 6,
+          padding: "5px 12px",
+          fontSize: 13,
+          cursor: "pointer",
+          fontWeight: 600,
+        }}
+      >
+        + Add File
+      </button>
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 12, color: "#8b949e" }}>{data?.commits?.length || 0} commits</span>
           <span style={{ fontSize: 12, color: "#8b949e" }}>·</span>
@@ -634,6 +848,100 @@ export default function RepoDetail() {
           loading={fileLoading}
           onClose={() => setOpenFile(null)}
         />
+        <AnalysisPanel
+        analysis={analysis}
+        loading={analysisLoading}
+        onClose={() => setAnalysis(null)}
+      />
+      {uploadOpen && (
+  <div style={{
+    position: "fixed",
+    top: 0, left: 0, right: 0, bottom: 0,
+    background: "rgba(0,0,0,0.6)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+  }}>
+    <div style={{
+      background: "#161b22",
+      padding: 20,
+      borderRadius: 8,
+      width: 400,
+      border: "1px solid #30363d",
+    }}>
+
+      <div style={{ fontSize: 14, marginBottom: 12 }}>
+        Add File to Repo
+      </div>
+
+      <input
+        placeholder="file path (e.g. src/App.java)"
+        value={uploadPath}
+        onChange={(e) => setUploadPath(e.target.value)}
+        style={{
+          width: "100%",
+          marginBottom: 10,
+          padding: 8,
+          background: "#0d1117",
+          border: "1px solid #30363d",
+          color: "#c9d1d9",
+        }}
+      />
+
+      <input
+        placeholder="commit message"
+        value={uploadMessage}
+        onChange={(e) => setUploadMessage(e.target.value)}
+        style={{
+          width: "100%",
+          marginBottom: 10,
+          padding: 8,
+          background: "#0d1117",
+          border: "1px solid #30363d",
+          color: "#c9d1d9",
+        }}
+      />
+
+      <input
+        type="file"
+        onChange={(e) => setUploadFile(e.target.files[0])}
+        style={{ marginBottom: 12 }}
+      />
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={handleFileUpload}
+          disabled={uploading}
+          style={{
+            flex: 1,
+            background: "#238636",
+            color: "#fff",
+            border: "none",
+            padding: 8,
+            cursor: "pointer",
+          }}
+        >
+          {uploading ? "Committing..." : "Commit"}
+        </button>
+
+        <button
+          onClick={() => setUploadOpen(false)}
+          style={{
+            flex: 1,
+            background: "#21262d",
+            color: "#c9d1d9",
+            border: "1px solid #30363d",
+            padding: 8,
+            cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+)}
       </div>
     </div>
   );
